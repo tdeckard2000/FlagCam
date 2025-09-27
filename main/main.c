@@ -233,7 +233,6 @@ static camera_fb_t *take_photo() {
 
 void app_main(void) {
     init_pins();
-    flash_led(1000);
     if (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_EXT0) {
     } else {
         esp_deep_sleep_start();
@@ -243,19 +242,22 @@ void app_main(void) {
         ESP_LOGI(TAG, "Error 4mb");
         return;
     }
+
+    flash_led(100);
+    ESP_LOGI(TAG, "Wait 5 seconds");
+    for(int i = 1; i<5; i++) {
+        vTaskDelay(1000 / portTICK_PERIOD_MS);
+        flash_led(100);
+    }
     init_camera();
     init_wifi();
-    for(int i = 0; i < 30; i++) {
-        await_wifi_connected();
-        camera_fb_t *pic = take_photo();
-        flash_led(100);
-        int data_length;
-        char *data_string = create_data_string(pic, &data_length);
-        post_data(data_string, &data_length);
-        esp_camera_fb_return(pic);
-        ESP_LOGI(TAG, "Wait 15 seconds");
-        vTaskDelay(15000 / portTICK_PERIOD_MS);
-    }
-    flash_led(100);
+    await_wifi_connected();
+    camera_fb_t *pic = take_photo();
+    flash_led(500);
+    int data_length;
+    char *data_string = create_data_string(pic, &data_length);
+    post_data(data_string, &data_length);
+    esp_camera_fb_return(pic);
+    flash_led(500);
     deep_sleep();
 }
