@@ -171,7 +171,7 @@ static esp_err_t post_data(char *data_string, int *data_length) {
     esp_http_client_config_t config = {
         .url = HUB_Upload_Address,
         .method = HTTP_METHOD_POST,
-        .timeout_ms = 20000,
+        .timeout_ms = 5000,
     };
     esp_http_client_handle_t client = esp_http_client_init(&config);
     esp_http_client_set_post_field(client, data_string, *data_length);
@@ -272,6 +272,7 @@ void app_main(void) {
         ESP_LOGI(TAG, "Error 4mb");
         return;
     }
+    flash_led(200);
     ESP_LOGI(TAG, "Wait 2 seconds");
     for (int i = 1; i < 2; i++) {
         vTaskDelay(1000 / portTICK_PERIOD_MS);
@@ -281,12 +282,16 @@ void app_main(void) {
     init_wifi();
     await_wifi_connected();
     camera_fb_t *pic = take_photo();
-    flash_led(500);
     int data_length;
     char *data_string = create_data_string(pic, &data_length);
-    post_data(data_string, &data_length);
+    esp_err_t post = post_data(data_string, &data_length);
+    if(post == ESP_OK) {
+      flash_led(200);
+    } else {
+      flash_led(100);
+      vTaskDelay(200 / portTICK_PERIOD_MS);
+      flash_led(100);
+    }
     esp_camera_fb_return(pic);
-    flash_led(500);
-    vTaskDelay(5000 / portTICK_PERIOD_MS);
     deep_sleep();
 }
