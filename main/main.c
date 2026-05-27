@@ -1,5 +1,6 @@
 #define BOARD_ESP32CAM_AITHINKER
 #include "driver/gpio.h"
+#include "driver/rtc_io.h"
 #include "esp_camera.h"
 #include "esp_http_client.h"
 #include "esp_netif.h"
@@ -64,7 +65,8 @@ static camera_config_t camera_config = {
     .frame_size = FRAMESIZE_VGA,
     .jpeg_quality = 12, // 0-63, for OV series camera sensors, lower number means higher quality
     .fb_count = 1,
-    .fb_location = CAMERA_FB_IN_PSRAM,
+    // .fb_location = CAMERA_FB_IN_PSRAM,
+    .fb_location = CAMERA_FB_IN_DRAM,
     .grab_mode = CAMERA_GRAB_WHEN_EMPTY,
 };
 
@@ -222,6 +224,32 @@ static void flash_led(int duration) {
 }
 
 static void deep_sleep() {
+    // Stop WiFi
+    esp_wifi_disconnect();
+    esp_wifi_stop();
+    esp_wifi_deinit();
+    // // Power down camera
+    gpio_set_level(CAM_PIN_PWDN, 1);
+    vTaskDelay(10 / portTICK_PERIOD_MS);
+    esp_camera_deinit();
+
+    // (These each cause crashing) Disable power domains INCLUDING VDDSDIO (flash power)
+    // esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_OFF);
+    // esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_SLOW_MEM, ESP_PD_OPTION_OFF);
+    // esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_FAST_MEM, ESP_PD_OPTION_OFF);
+    // esp_sleep_pd_config(ESP_PD_DOMAIN_VDDSDIO, ESP_PD_OPTION_OFF);
+
+    // // Ensure flash LED stays off
+    gpio_set_level(GPIO_NUM_4, 0);
+    gpio_hold_en(GPIO_NUM_4);
+
+    // // Disable SD Card Pins (Shared with Camera)
+    rtc_gpio_isolate(GPIO_NUM_2);  // SD D0
+    rtc_gpio_isolate(GPIO_NUM_12); // SD D2
+    rtc_gpio_isolate(GPIO_NUM_13); // SD D3 (also the wakeup pin - might want to skip)
+    rtc_gpio_isolate(GPIO_NUM_14); // SD CLK
+    rtc_gpio_isolate(GPIO_NUM_15); // SD CMD
+
     ESP_LOGI(TAG, "G'Night");
     esp_deep_sleep_start();
 }
@@ -232,20 +260,20 @@ static camera_fb_t *take_photo() {
 }
 
 void app_main(void) {
+    gpio_deep_sleep_hold_dis();
+    gpio_hold_dis(GPIO_NUM_4);
     init_pins();
     if (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_EXT0) {
     } else {
-        esp_deep_sleep_start();
+        deep_sleep();
     }
     esp_event_loop_create_default();
     if (ESP_OK != init_4mb_ext()) {
         ESP_LOGI(TAG, "Error 4mb");
         return;
     }
-
-    flash_led(100);
-    ESP_LOGI(TAG, "Wait 5 seconds");
-    for(int i = 1; i<5; i++) {
+    ESP_LOGI(TAG, "Wait 2 seconds");
+    for (int i = 1; i < 2; i++) {
         vTaskDelay(1000 / portTICK_PERIOD_MS);
         flash_led(100);
     }
@@ -259,5 +287,6 @@ void app_main(void) {
     post_data(data_string, &data_length);
     esp_camera_fb_return(pic);
     flash_led(500);
+    vTaskDelay(5000 / portTICK_PERIOD_MS);
     deep_sleep();
 }
